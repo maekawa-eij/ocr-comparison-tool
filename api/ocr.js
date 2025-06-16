@@ -10,34 +10,30 @@ module.exports = async (req, res) => {
   }
 
   try {
-    // Base64画像データをバッファに変換
     const buffer = Buffer.from(image.replace(/^data:image\/\w+;base64,/, ""), 'base64');
-
-    // sharpで前処理（グレースケール化＋二値化）
     const processedImage = await sharp(buffer)
       .grayscale()
       .threshold(150)
       .toBuffer();
 
-    // Tesseractワーカーの作成と初期化
     const worker = createWorker();
     await worker.load();
     await worker.loadLanguage('jpn');
     await worker.initialize('jpn');
-
-    // パラメータ設定（必要に応じて調整可能）
     await worker.setParameters({
       preserve_interword_spaces: '1',
     });
 
-    // OCR実行
     const { data: { text } } = await worker.recognize(processedImage);
     await worker.terminate();
 
-    // 改行などを除去して整形
-    const extractedText = text.replace(/\n/g, '').replace(/\r/g, '');
+    // 改行と余分な空白を除去
+    const cleanedText = text.replace(/\s+/g, '');
 
-    // 結果を返す
+    // 原材料名の抽出（例：「原材料名：」から始まる部分を抽出）
+    const match = cleanedText.match(/原材料名[:：]?(.*?)(内容量|保存方法|賞味期限|製造者|販売者|アレルゲン|栄養成分|$)/);
+    const extractedText = match ? match[1] : '原材料名が見つかりませんでした';
+
     res.status(200).json({ text: extractedText });
 
   } catch (error) {
