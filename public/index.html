@@ -60,16 +60,22 @@
       pastedImage = null;
     }
 
-    function normalizeAndSplit(text) {
-      return text
+    function normalizeAndExtractIngredients(text) {
+      let cleaned = text
+        .replace(/\s+/g, '')
         .replace(/[（）]/g, s => s === '（' ? '(' : ')')
         .replace(/[、]/g, ',')
         .replace(/[。]/g, '.')
         .replace(/[：]/g, ':')
         .replace(/[／]/g, '/')
-        .replace(/\u3000/g, ' ')
-        .replace(/[\r\n\u2028\u2029]+/g, '')
-        .replace(/\s+/g, '')
+        .replace(/\u3000/g, '');
+
+      const match = cleaned.match(/原材料名[:：]?([^内容量]*)/);
+      if (match && match[1]) {
+        cleaned = match[1];
+      }
+
+      return cleaned
         .split(',')
         .map(item => item.trim())
         .filter(item => item.length > 0);
@@ -110,8 +116,8 @@
       Tesseract.recognize(pastedImage.src, 'jpn', {
         logger: m => console.log(m)
       }).then(({ data: { text } }) => {
-        const extractedList = normalizeAndSplit(text);
-        const referenceList = normalizeAndSplit(referenceText);
+        const extractedList = normalizeAndExtractIngredients(text);
+        const referenceList = normalizeAndExtractIngredients(referenceText);
 
         const { highlightedExtracted, highlightedReference } = highlightListDifferencesStrictOrder(extractedList, referenceList);
 
