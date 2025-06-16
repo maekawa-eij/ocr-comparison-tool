@@ -1,84 +1,132 @@
-
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OCR Comparison Tool</title>
-    <style>
-        body { font-family: Arial, sans-serif; }
-        .container { max-width: 800px; margin: auto; padding: 20px; }
-        .diff { background-color: #ffcccc; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Image to Text Comparison Tool</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.1/dist/tesseract.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    .container {
+      max-width: 800px;
+      margin: auto;
+    }
+    #pasteArea {
+      border: 2px dashed #ccc;
+      padding: 20px;
+      height: 200px;
+      text-align: center;
+      line-height: 160px;
+      color: #999;
+      overflow: auto;
+    }
+    #pasteArea img {
+      max-width: 100%;
+      max-height: 180px;
+    }
+    textarea {
+      width: 100%;
+      height: 150px;
+      margin-top: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+    }
+    .diff {
+      background-color: #ffdddd;
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>OCR Comparison Tool</h1>
-        <div id="pasteArea" contenteditable="true">ここに画像をCtrl+Vで貼り付けてください</div>
-        <input type="file" id="imageInput" accept="image/*">
-        <button onclick="startComparison()">Compare</button>
-        <h2>Reference Text</h2>
-        <textarea id="referenceText" rows="4" cols="50"></textarea>
-        <h2>Comparison Result</h2>
-        <table id="resultTable" border="1">
-            <thead>
-                <tr>
-                    <th>Extracted Text</th>
-                    <th>Reference Text</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
-    </div>
-    <script>
-        let pastedImage = null;
+  <div class="container">
+    <h1>Image to Text Comparison Tool</h1>
+    <div id="pasteArea" contenteditable="true">ここに画像を Ctrl+V で貼り付けてください</div>
+    <button onclick="clearContent()">Clear</button>
+    <textarea id="referenceText" placeholder="比較対象のテキストをここに貼り付けてください"></textarea>
+    <button onclick="startComparison()">Start Comparison</button>
+    <table id="resultTable">
+      <thead>
+        <tr>
+          <th>Extracted Text</th>
+          <th>Reference Text</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <script>
+    let pastedImage = null;
 
-        document.getElementById('imageInput').addEventListener('change', function(event) {
-            const file = event.target.files[0];
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                pastedImage = new Image();
-                pastedImage.src = e.target.result;
-            };
-            reader.readAsDataURL(file);
-        });
-
-        async function sendImageToCopilot(imageDataUrl) {
-            const response = await fetch('https://your-copilot-endpoint.com/ocr', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: imageDataUrl })
-            });
-            const result = await response.json();
-            return result.text;
+    document.getElementById('pasteArea').addEventListener('paste', function (event) {
+      const items = (event.clipboardData || event.originalEvent.clipboardData).items;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const blob = items[i].getAsFile();
+          const reader = new FileReader();
+          reader.onload = function (e) {
+            pastedImage = new Image();
+            pastedImage.src = e.target.result;
+            pastedImage.style.maxHeight = '180px';
+            pastedImage.style.maxWidth = '100%';
+            const area = document.getElementById('pasteArea');
+            area.innerHTML = '';
+            area.appendChild(pastedImage);
+          };
+          reader.readAsDataURL(blob);
         }
+      }
+    });
 
-        async function startComparison() {
-            const referenceText = document.getElementById('referenceText').value;
-            const resultTable = document.getElementById('resultTable').getElementsByTagName('tbody')[0];
-            if (!pastedImage) {
-                alert('画像が貼り付けられていません。');
-                return;
-            }
+    function clearContent() {
+      document.getElementById('pasteArea').innerHTML = 'ここに画像を Ctrl+V で貼り付けてください';
+      document.getElementById('referenceText').value = '';
+      const resultTable = document.getElementById('resultTable').getElementsByTagName('tbody')[0];
+      resultTable.innerHTML = '';
+      pastedImage = null;
+    }
 
-            const extractedText = await sendImageToCopilot(pastedImage.src);
-            compareTexts(extractedText, referenceText, resultTable);
+    function startComparison() {
+      const referenceText = document.getElementById('referenceText').value;
+      const resultTable = document.getElementById('resultTable').getElementsByTagName('tbody')[0];
+      if (!pastedImage) {
+        alert('画像が貼り付けられていません。');
+        return;
+      }
+      Tesseract.recognize(pastedImage.src, 'jpn', {
+        logger: m => console.log(m)
+      }).then(({ data: { text } }) => {
+        compareTexts(text, referenceText, resultTable);
+      });
+    }
+
+    function compareTexts(extractedText, referenceText, resultTable) {
+      const extractedLines = extractedText.trim().split('\n');
+      const referenceLines = referenceText.trim().split('\n');
+      const maxLength = Math.max(extractedLines.length, referenceLines.length);
+      resultTable.innerHTML = '';
+      for (let i = 0; i < maxLength; i++) {
+        const extracted = extractedLines[i] || '';
+        const reference = referenceLines[i] || '';
+        const row = resultTable.insertRow();
+        const cell1 = row.insertCell(0);
+        const cell2 = row.insertCell(1);
+        cell1.textContent = extracted;
+        cell2.textContent = reference;
+        if (extracted !== reference) {
+          cell1.classList.add('diff');
+          cell2.classList.add('diff');
         }
-
-        function compareTexts(extractedText, referenceText, resultTable) {
-            const extracted = extractedText.replace(/\n/g, '').replace(/\s+/g, ' ').trim();
-            const reference = referenceText.replace(/\n/g, '').replace(/\s+/g, ' ').trim();
-            resultTable.innerHTML = '';
-            const row = resultTable.insertRow();
-            const cell1 = row.insertCell(0);
-            const cell2 = row.insertCell(1);
-            cell1.textContent = extracted;
-            cell2.textContent = reference;
-            if (extracted !== reference) {
-                cell1.classList.add('diff');
-                cell2.classList.add('diff');
-            }
-        }
-    </script>
+      }
+    }
+  </script>
 </body>
 </html>
