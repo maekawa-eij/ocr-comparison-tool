@@ -6,45 +6,14 @@
   <title>Image to Text Comparison Tool</title>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.1/dist/tesseract.min.js"></script>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
-    }
-    .container {
-      max-width: 800px;
-      margin: auto;
-    }
-    #pasteArea {
-      border: 2px dashed #ccc;
-      padding: 20px;
-      height: 200px;
-      text-align: center;
-      line-height: 160px;
-      color: #999;
-      overflow: auto;
-    }
-    #pasteArea img {
-      max-width: 100%;
-      max-height: 180px;
-    }
-    textarea {
-      width: 100%;
-      height: 150px;
-      margin-top: 20px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-    }
-    th, td {
-      border: 1px solid #ccc;
-      padding: 8px;
-      vertical-align: top;
-    }
-    .diff-char {
-      background-color: #ffdddd;
-    }
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .container { max-width: 800px; margin: auto; }
+    #pasteArea { border: 2px dashed #ccc; padding: 20px; height: 200px; text-align: center; line-height: 160px; color: #999; overflow: auto; }
+    #pasteArea img { max-width: 100%; max-height: 180px; }
+    textarea { width: 100%; height: 150px; margin-top: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; vertical-align: top; }
+    .diff-char { background-color: #ffdddd; }
   </style>
 </head>
 <body>
@@ -56,10 +25,7 @@
     <button onclick="startComparison()">Start Comparison</button>
     <table id="resultTable">
       <thead>
-        <tr>
-          <th>Extracted Text</th>
-          <th>Reference Text</th>
-        </tr>
+        <tr><th>Extracted Text</th><th>Reference Text</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -90,57 +56,70 @@
     function clearContent() {
       document.getElementById('pasteArea').innerHTML = 'ここに画像を Ctrl+V で貼り付けてください';
       document.getElementById('referenceText').value = '';
-      const resultTable = document.getElementById('resultTable').getElementsByTagName('tbody')[0];
-      resultTable.innerHTML = '';
+      document.getElementById('resultTable').getElementsByTagName('tbody')[0].innerHTML = '';
       pastedImage = null;
+    }
+
+    function normalizeAndSplit(text) {
+      return text
+        .replace(/[（）]/g, s => s === '（' ? '(' : ')')
+        .replace(/[、]/g, ',')
+        .replace(/[。]/g, '.')
+        .replace(/[：]/g, ':')
+        .replace(/[／]/g, '/')
+        .replace(/\u3000/g, ' ')
+        .replace(/[\r\n\u2028\u2029]+/g, '')
+        .replace(/\s+/g, '')
+        .split(',')
+        .map(item => item.trim())
+        .filter(item => item.length > 0);
+    }
+
+    function highlightListDifferencesStrictOrder(extractedList, referenceList) {
+      const maxLength = Math.max(extractedList.length, referenceList.length);
+      let highlightedExtracted = [];
+      let highlightedReference = [];
+
+      for (let i = 0; i < maxLength; i++) {
+        const eItem = extractedList[i] || '';
+        const rItem = referenceList[i] || '';
+        if (eItem === rItem) {
+          highlightedExtracted.push(eItem);
+          highlightedReference.push(rItem);
+        } else {
+          highlightedExtracted.push(`<span class="diff-char">${eItem}</span>`);
+          highlightedReference.push(`<span class="diff-char">${rItem}</span>`);
+        }
+      }
+
+      return {
+        highlightedExtracted: highlightedExtracted.join(', '),
+        highlightedReference: highlightedReference.join(', ')
+      };
     }
 
     function startComparison() {
       const referenceText = document.getElementById('referenceText').value;
       const resultTable = document.getElementById('resultTable').getElementsByTagName('tbody')[0];
+
       if (!pastedImage) {
         alert('画像が貼り付けられていません。');
         return;
       }
+
       Tesseract.recognize(pastedImage.src, 'jpn', {
         logger: m => console.log(m)
       }).then(({ data: { text } }) => {
-        compareTexts(text, referenceText, resultTable);
+        const extractedList = normalizeAndSplit(text);
+        const referenceList = normalizeAndSplit(referenceText);
+
+        const { highlightedExtracted, highlightedReference } = highlightListDifferencesStrictOrder(extractedList, referenceList);
+
+        resultTable.innerHTML = '';
+        const row = resultTable.insertRow();
+        row.insertCell(0).innerHTML = highlightedExtracted;
+        row.insertCell(1).innerHTML = highlightedReference;
       });
-    }
-
-    function highlightDifferences(extracted, reference) {
-      const maxLength = Math.max(extracted.length, reference.length);
-      let highlightedExtracted = '';
-      let highlightedReference = '';
-
-      for (let i = 0; i < maxLength; i++) {
-        const eChar = extracted[i] || '';
-        const rChar = reference[i] || '';
-        if (eChar !== rChar) {
-          highlightedExtracted += `<span class="diff-char">${eChar}</span>`;
-          highlightedReference += `<span class="diff-char">${rChar}</span>`;
-        } else {
-          highlightedExtracted += eChar;
-          highlightedReference += rChar;
-        }
-      }
-
-      return { highlightedExtracted, highlightedReference };
-    }
-
-    function compareTexts(extractedText, referenceText, resultTable) {
-      const cleanedExtracted = extractedText.replace(/[\r\n\u2028\u2029]+/g, '').replace(/\s+/g, '');
-      const cleanedReference = referenceText.replace(/[\r\n\u2028\u2029]+/g, '').replace(/\s+/g, '');
-
-      const { highlightedExtracted, highlightedReference } = highlightDifferences(cleanedExtracted, cleanedReference);
-
-      resultTable.innerHTML = '';
-      const row = resultTable.insertRow();
-      const cell1 = row.insertCell(0);
-      const cell2 = row.insertCell(1);
-      cell1.innerHTML = highlightedExtracted;
-      cell2.innerHTML = highlightedReference;
     }
   </script>
 </body>
