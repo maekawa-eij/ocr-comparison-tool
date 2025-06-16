@@ -79,16 +79,13 @@
         .replace(/[／]/g, '/')
         .replace(/\u3000/g, '');
 
-      // 原材料名以降の「含む）」までを抽出
+      const match = cleaned.match(/原材料名[:：]?(.+?)(含む\))?(内容量|保存方法|製造者|$)/);
       let ingredients = '';
-      const match = cleaned.match(/原材料名[:：]?(.+?含む\))/);
+
       if (match && match[1]) {
         ingredients = match[1];
-      } else {
-        // 含む）が見つからなければ原材料名以降すべてを対象に
-        const fallback = cleaned.match(/原材料名[:：]?(.+)/);
-        if (fallback && fallback[1]) {
-          ingredients = fallback[1];
+        if (match[2]) {
+          ingredients += match[2];
         }
       }
 
@@ -111,14 +108,16 @@
         const extractedList = normalizeAndExtractIngredients(raw);
         const referenceList = normalizeAndExtractIngredients(document.getElementById('referenceText').value);
 
-        // 表示: 抽出結果（原材料名だけ）
         document.getElementById('cleanedArea').innerHTML =
           `<strong>抽出された原材料リスト:</strong> ${extractedList.join(', ')}`;
 
-        // 比較して表を作成
         const resultTable = document.getElementById('resultTable').getElementsByTagName('tbody')[0];
         resultTable.innerHTML = '';
 
+        const usedExtracted = new Set();
+        const usedReference = new Set();
+
+        // 正しい位置で比較
         const maxLength = Math.max(extractedList.length, referenceList.length);
         for (let i = 0; i < maxLength; i++) {
           const eItem = extractedList[i] || '';
@@ -130,18 +129,41 @@
           } else if (!eItem && rItem) {
             diffType = '抜け';
           } else if (eItem !== rItem) {
-            if (referenceList.includes(eItem)) {
+            if (referenceList.includes(eItem) && !usedReference.has(eItem)) {
               diffType = '順序の違い';
+              usedReference.add(eItem);
             } else {
               diffType = '文字の違い';
             }
           }
+
+          if (eItem) usedExtracted.add(eItem);
+          if (rItem) usedReference.add(rItem);
 
           const row = resultTable.insertRow();
           row.insertCell(0).innerHTML = diffType ? `<span class="diff">${eItem}</span>` : eItem;
           row.insertCell(1).innerHTML = diffType ? `<span class="diff">${rItem}</span>` : rItem;
           row.insertCell(2).textContent = diffType;
         }
+
+        // 残りの漏れをチェック
+        referenceList.forEach(rItem => {
+          if (!usedReference.has(rItem)) {
+            const row = resultTable.insertRow();
+            row.insertCell(0).innerHTML = '';
+            row.insertCell(1).innerHTML = `<span class="diff">${rItem}</span>`;
+            row.insertCell(2).textContent = '抜け';
+          }
+        });
+
+        extractedList.forEach(eItem => {
+          if (!usedExtracted.has(eItem) && !referenceList.includes(eItem)) {
+            const row = resultTable.insertRow();
+            row.insertCell(0).innerHTML = `<span class="diff">${eItem}</span>`;
+            row.insertCell(1).innerHTML = '';
+            row.insertCell(2).textContent = '余分';
+          }
+        });
       });
     }
   </script>
