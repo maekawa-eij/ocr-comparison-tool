@@ -36,10 +36,13 @@
       width: 100%;
       border-collapse: collapse;
       margin-top: 20px;
-    border: 1px solid #ccc;
-      padding: 8px;
     }
-    .diff {
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      vertical-align: top;
+    }
+    .diff-char {
       background-color: #ffdddd;
     }
   </style>
@@ -106,22 +109,38 @@
       });
     }
 
+    function highlightDifferences(extracted, reference) {
+      const maxLength = Math.max(extracted.length, reference.length);
+      let highlightedExtracted = '';
+      let highlightedReference = '';
+
+      for (let i = 0; i < maxLength; i++) {
+        const eChar = extracted[i] || '';
+        const rChar = reference[i] || '';
+        if (eChar !== rChar) {
+          highlightedExtracted += `<span class="diff-char">${eChar}</span>`;
+          highlightedReference += `<span class="diff-char">${rChar}</span>`;
+        } else {
+          highlightedExtracted += eChar;
+          highlightedReference += rChar;
+        }
+      }
+
+      return { highlightedExtracted, highlightedReference };
+    }
+
     function compareTexts(extractedText, referenceText, resultTable) {
-      // 改行・空白・制御文字を除去して1行に整形
       const cleanedExtracted = extractedText.replace(/[\r\n\u2028\u2029]+/g, '').replace(/\s+/g, '');
       const cleanedReference = referenceText.replace(/[\r\n\u2028\u2029]+/g, '').replace(/\s+/g, '');
+
+      const { highlightedExtracted, highlightedReference } = highlightDifferences(cleanedExtracted, cleanedReference);
 
       resultTable.innerHTML = '';
       const row = resultTable.insertRow();
       const cell1 = row.insertCell(0);
       const cell2 = row.insertCell(1);
-      cell1.textContent = cleanedExtracted;
-      cell2.textContent = cleanedReference;
-
-      if (cleanedExtracted !== cleanedReference) {
-        cell1.classList.add('diff');
-        cell2.classList.add('diff');
-      }
+      cell1.innerHTML = highlightedExtracted;
+      cell2.innerHTML = highlightedReference;
     }
   </script>
 </body>
