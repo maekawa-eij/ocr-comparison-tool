@@ -36,9 +36,7 @@
       width: 100%;
       border-collapse: collapse;
       margin-top: 20px;
-    }
-    th, td {
-      border: 1px solid #ccc;
+    border: 1px solid #ccc;
       padding: 8px;
     }
     .diff {
@@ -109,22 +107,20 @@
     }
 
     function compareTexts(extractedText, referenceText, resultTable) {
-      const extractedLines = extractedText.trim().split('\n');
-      const referenceLines = referenceText.trim().split('\n');
-      const maxLength = Math.max(extractedLines.length, referenceLines.length);
+      // 改行・空白・制御文字を除去して1行に整形
+      const cleanedExtracted = extractedText.replace(/[\r\n\u2028\u2029]+/g, '').replace(/\s+/g, '');
+      const cleanedReference = referenceText.replace(/[\r\n\u2028\u2029]+/g, '').replace(/\s+/g, '');
+
       resultTable.innerHTML = '';
-      for (let i = 0; i < maxLength; i++) {
-        const extracted = extractedLines[i] || '';
-        const reference = referenceLines[i] || '';
-        const row = resultTable.insertRow();
-        const cell1 = row.insertCell(0);
-        const cell2 = row.insertCell(1);
-        cell1.textContent = extracted;
-        cell2.textContent = reference;
-        if (extracted !== reference) {
-          cell1.classList.add('diff');
-          cell2.classList.add('diff');
-        }
+      const row = resultTable.insertRow();
+      const cell1 = row.insertCell(0);
+      const cell2 = row.insertCell(1);
+      cell1.textContent = cleanedExtracted;
+      cell2.textContent = cleanedReference;
+
+      if (cleanedExtracted !== cleanedReference) {
+        cell1.classList.add('diff');
+        cell2.classList.add('diff');
       }
     }
   </script>
