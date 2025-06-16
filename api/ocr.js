@@ -16,8 +16,10 @@ function normalizeText(text) {
 
 // 原材料名だけを抽出する関数（改行・ノイズ対応）
 function extractIngredients(rawText) {
-  // 改行・空白を除去して1行に整形
-  const cleaned = rawText.replace(/[\r\n]+/g, '').replace(/\s+/g, '');
+  // 改行・制御文字・空白を除去して1行に整形
+  const cleaned = rawText
+    .replace(/[\r\n\u2028\u2029]+/g, '') // 改行・特殊改行文字を除去
+    .replace(/\s+/g, '');                // 空白を除去
 
   // ノイズ除去（意味不明な記号や数字の羅列を削除）
   const denoised = cleaned.replace(/[^\w一-龯ぁ-んァ-ンー（）・,、／\/]/g, '');
