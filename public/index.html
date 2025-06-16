@@ -13,7 +13,7 @@
     textarea { width: 100%; height: 150px; margin-top: 20px; }
     table { width: 100%; border-collapse: collapse; margin-top: 20px; }
     th, td { border: 1px solid #ccc; padding: 8px; vertical-align: top; }
-    .diff-char { background-color: #ffdddd; }
+    .diff { background-color: #ffdddd; }
   </style>
 </head>
 <body>
@@ -23,13 +23,20 @@
     <button onclick="clearContent()">Clear</button>
     <textarea id="referenceText" placeholder="比較対象のテキストをここに貼り付けてください"></textarea>
     <button onclick="startComparison()">Start Comparison</button>
+
+    <div id="cleanedArea"></div>
     <table id="resultTable">
       <thead>
-        <tr><th>Extracted Text</th><th>Reference Text</th></tr>
+        <tr>
+          <th>Extracted Ingredient</th>
+          <th>Reference Ingredient</th>
+          <th>Difference Type</th>
+        </tr>
       </thead>
       <tbody></tbody>
     </table>
   </div>
+
   <script>
     let pastedImage = null;
 
@@ -57,11 +64,13 @@
       document.getElementById('pasteArea').innerHTML = 'ここに画像を Ctrl+V で貼り付けてください';
       document.getElementById('referenceText').value = '';
       document.getElementById('resultTable').getElementsByTagName('tbody')[0].innerHTML = '';
+      document.getElementById('cleanedArea').innerHTML = '';
       pastedImage = null;
     }
 
     function normalizeAndExtractIngredients(text) {
       let cleaned = text
+        .replace(/[\r\n]+/g, '')
         .replace(/\s+/g, '')
         .replace(/[（）]/g, s => s === '（' ? '(' : ')')
         .replace(/[、]/g, ',')
@@ -81,33 +90,7 @@
         .filter(item => item.length > 0);
     }
 
-    function highlightListDifferencesStrictOrder(extractedList, referenceList) {
-      const maxLength = Math.max(extractedList.length, referenceList.length);
-      let highlightedExtracted = [];
-      let highlightedReference = [];
-
-      for (let i = 0; i < maxLength; i++) {
-        const eItem = extractedList[i] || '';
-        const rItem = referenceList[i] || '';
-        if (eItem === rItem) {
-          highlightedExtracted.push(eItem);
-          highlightedReference.push(rItem);
-        } else {
-          highlightedExtracted.push(`<span class="diff-char">${eItem}</span>`);
-          highlightedReference.push(`<span class="diff-char">${rItem}</span>`);
-        }
-      }
-
-      return {
-        highlightedExtracted: highlightedExtracted.join(', '),
-        highlightedReference: highlightedReference.join(', ')
-      };
-    }
-
     function startComparison() {
-      const referenceText = document.getElementById('referenceText').value;
-      const resultTable = document.getElementById('resultTable').getElementsByTagName('tbody')[0];
-
       if (!pastedImage) {
         alert('画像が貼り付けられていません。');
         return;
@@ -116,15 +99,41 @@
       Tesseract.recognize(pastedImage.src, 'jpn', {
         logger: m => console.log(m)
       }).then(({ data: { text } }) => {
-        const extractedList = normalizeAndExtractIngredients(text);
-        const referenceList = normalizeAndExtractIngredients(referenceText);
+        const raw = text.replace(/[\r\n]+/g, '');
+        const extractedList = normalizeAndExtractIngredients(raw);
+        const referenceList = normalizeAndExtractIngredients(document.getElementById('referenceText').value);
 
-        const { highlightedExtracted, highlightedReference } = highlightListDifferencesStrictOrder(extractedList, referenceList);
+        // 表示: 抽出結果（原材料名だけ）
+        document.getElementById('cleanedArea').innerHTML =
+          `<strong>抽出された原材料リスト:</strong> ${extractedList.join(', ')}`;
 
+        // 比較して表を作成
+        const resultTable = document.getElementById('resultTable').getElementsByTagName('tbody')[0];
         resultTable.innerHTML = '';
-        const row = resultTable.insertRow();
-        row.insertCell(0).innerHTML = highlightedExtracted;
-        row.insertCell(1).innerHTML = highlightedReference;
+
+        const maxLength = Math.max(extractedList.length, referenceList.length);
+        for (let i = 0; i < maxLength; i++) {
+          const eItem = extractedList[i] || '';
+          const rItem = referenceList[i] || '';
+          let diffType = '';
+
+          if (eItem && !rItem) {
+            diffType = '余分';
+          } else if (!eItem && rItem) {
+            diffType = '抜け';
+          } else if (eItem !== rItem) {
+            if (referenceList.includes(eItem)) {
+              diffType = '順序の違い';
+            } else {
+              diffType = '文字の違い';
+            }
+          }
+
+          const row = resultTable.insertRow();
+          row.insertCell(0).innerHTML = diffType ? `<span class="diff">${eItem}</span>` : eItem;
+          row.insertCell(1).innerHTML = diffType ? `<span class="diff">${rItem}</span>` : rItem;
+          row.insertCell(2).textContent = diffType;
+        }
       });
     }
   </script>
