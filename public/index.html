@@ -79,12 +79,20 @@
         .replace(/[／]/g, '/')
         .replace(/\u3000/g, '');
 
-      const match = cleaned.match(/原材料名[:：]?([^内容量]*)/);
+      // 原材料名以降の「含む）」までを抽出
+      let ingredients = '';
+      const match = cleaned.match(/原材料名[:：]?(.+?含む\))/);
       if (match && match[1]) {
-        cleaned = match[1];
+        ingredients = match[1];
+      } else {
+        // 含む）が見つからなければ原材料名以降すべてを対象に
+        const fallback = cleaned.match(/原材料名[:：]?(.+)/);
+        if (fallback && fallback[1]) {
+          ingredients = fallback[1];
+        }
       }
 
-      return cleaned
+      return ingredients
         .split(',')
         .map(item => item.trim())
         .filter(item => item.length > 0);
