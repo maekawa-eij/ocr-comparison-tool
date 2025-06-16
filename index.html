@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>OCR Comparison Tool</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .diff { background-color: #ffcccc; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #ddd; padding: 8px; }
+    th { background-color: #f2f2f2; }
+  </style>
+</head>
+<body>
+  <h1>OCR Comparison Tool</h1>
+  <input type="file" id="imageInput" accept="image/*">
+  <textarea id="referenceText" rows="10" cols="50" placeholder="Enter reference text here..."></textarea>
+  <button onclick="startComparison()">Compare</button>
+  <table id="resultTable">
+    <thead>
+      <tr>
+        <th>Extracted Text</th>
+        <th>Reference Text</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <script>
+    let pastedImage = null;
+
+    document.getElementById('imageInput').addEventListener('change', function(event) {
+      const file = event.target.files[0];
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        pastedImage = new Image();
+        pastedImage.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    async function sendImageToCopilot(imageDataUrl) {
+      const response = await fetch('/api/ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageDataUrl })
+      });
+      const result = await response.json();
+      return result.text;
+    }
+
+    async function startComparison() {
+      const referenceText = document.getElementById('referenceText').value;
+      const resultTable = document.getElementById('resultTable').getElementsByTagName('tbody')[0];
+      if (!pastedImage) {
+        alert('画像が貼り付けられていません。');
+        return;
+      }
+
+      const extractedText = await sendImageToCopilot(pastedImage.src);
+      compareTexts(extractedText, referenceText, resultTable);
+    }
+
+    function compareTexts(extractedText, referenceText, resultTable) {
+      const extracted = extractedText.replace(/\n/g, '').replace(/\s+/g, ' ').trim();
+      const reference = referenceText.replace(/\n/g, '').replace(/\s+/g, ' ').trim();
+      resultTable.innerHTML = '';
+      const row = resultTable.insertRow();
+      const cell1 = row.insertCell(0);
+      const cell2 = row.insertCell(1);
+      cell1.textContent = extracted;
+      cell2.textContent = reference;
+      if (extracted !== reference) {
+        cell1.classList.add('diff');
+        cell2.classList.add('diff');
+      }
+    }
+  </script>
+</body>
+</html>
