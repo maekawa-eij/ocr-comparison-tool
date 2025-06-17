@@ -71,7 +71,6 @@
         logger: m => console.log(m)
       });
 
-      // 空白（全角・半角）と改行を除去
       const cleanedText = text.replace(/[ 　]/g, '').replace(/[\r\n]/g, '');
       document.getElementById('extractedText').value = cleanedText;
     }
@@ -89,28 +88,54 @@
         .trim();
     }
 
+    function splitIngredients(text) {
+      const [ingredientsPart, additivesPart] = text.split(/[／/]/);
+      const ingredients = ingredientsPart ? ingredientsPart.split(/[、,]/).map(s => s.trim()).filter(Boolean) : [];
+      const additives = additivesPart ? additivesPart.split(/[、,]/).map(s => s.trim()).filter(Boolean) : [];
+      return { ingredients, additives };
+    }
+
+    function compareLists(list1, list2) {
+      const missingInList1 = list2.filter(item => !list1.includes(item));
+      const missingInList2 = list1.filter(item => !list2.includes(item));
+      const orderDifferences = list1.filter((item, idx) => list2.includes(item) && item !== list2[idx]);
+      return { missingInList1, missingInList2, orderDifferences };
+    }
+
     function compareTexts(extracted, reference) {
-      const extractedIngredients = normalizeText(extracted).split(',');
-      const referenceIngredients = normalizeText(reference).split(',');
+      const { ingredients: extractedIngredients, additives: extractedAdditives } = splitIngredients(normalizeText(extracted));
+      const { ingredients: referenceIngredients, additives: referenceAdditives } = splitIngredients(normalizeText(reference));
 
-      const missingInExtracted = referenceIngredients.filter(i => !extractedIngredients.includes(i));
-      const missingInReference = extractedIngredients.filter(i => !referenceIngredients.includes(i));
-
-      const orderDifferences = extractedIngredients.filter((i, idx) =>
-        referenceIngredients.includes(i) && i !== referenceIngredients[idx]
-      );
+      const ingredientComparison = compareLists(extractedIngredients, referenceIngredients);
+      const additiveComparison = compareLists(extractedAdditives, referenceAdditives);
 
       let result = '<h3>比較結果</h3>';
-      if (missingInExtracted.length > 0) {
-        result += `<p><strong>画像にあってテキストに無い原材料:</strong> ${missingInExtracted.join(', ')}</p>`;
+      if (ingredientComparison.missingInList1.length > 0) {
+        result += `<p><strong>画像にあってテキストに無い原材料:</strong> ${ingredientComparison.missingInList1.join(', ')}</p>`;
       }
-      if (missingInReference.length > 0) {
-        result += `<p><strong>テキストにあって画像に無い原材料:</strong> ${missingInReference.join(', ')}</p>`;
+      if (ingredientComparison.missingInList2.length > 0) {
+        result += `<p><strong>テキストにあって画像に無い原材料:</strong> ${ingredientComparison.missingInList2.join(', ')}</p>`;
       }
-      if (orderDifferences.length > 0) {
-        result += `<p><strong>表示順の違い:</strong> ${orderDifferences.join(', ')}</p>`;
+      if (ingredientComparison.orderDifferences.length > 0) {
+        result += `<p><strong>原材料の表示順の違い:</strong> ${ingredientComparison.orderDifferences.join(', ')}</p>`;
       }
-      if (missingInExtracted.length === 0 && missingInReference.length === 0 && orderDifferences.length === 0) {
+      if (additiveComparison.missingInList1.length > 0) {
+        result += `<p><strong>画像にあってテキストに無い添加物:</strong> ${additiveComparison.missingInList1.join(', ')}</p>`;
+      }
+      if (additiveComparison.missingInList2.length > 0) {
+        result += `<p><strong>テキストにあって画像に無い添加物:</strong> ${additiveComparison.missingInList2.join(', ')}</p>`;
+      }
+      if (additiveComparison.orderDifferences.length > 0) {
+        result += `<p><strong>添加物の表示順の違い:</strong> ${additiveComparison.orderDifferences.join(', ')}</p>`;
+      }
+      if (
+        ingredientComparison.missingInList1.length === 0 &&
+        ingredientComparison.missingInList2.length === 0 &&
+        ingredientComparison.orderDifferences.length === 0 &&
+        additiveComparison.missingInList1.length === 0 &&
+        additiveComparison.missingInList2.length === 0 &&
+        additiveComparison.orderDifferences.length === 0
+      ) {
         result += '<p>差異はありません。</p>';
       }
 
