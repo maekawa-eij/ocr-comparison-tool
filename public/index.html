@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Image to Text Comparison Tool</title>
+  <title>原材料名 OCR 比較ツール</title>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.1/dist/tesseract.min.js"></script>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
@@ -19,24 +19,14 @@
     }
     #pasteArea img { max-width: 100%; max-height: 180px; }
     textarea { width: 100%; height: 150px; margin-top: 20px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-    th, td { border: 1px solid #ccc; padding: 8px; vertical-align: top; }
-    .diff-char { background-color: #ffdddd; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>Image to Text Comparison Tool</h1>
+    .result { margin-top: 20px; padding: 10px; background: #f9f9f9; border: 1px solid #ccc; }
+ 1>原材料名 OCR 比較ツール</h1>
     <div id="pasteArea" contenteditable="true">ここに画像を Ctrl+V で貼り付けてください</div>
     <button onclick="clearContent()">Clear</button>
+    <textarea id="extractedText" placeholder="抽出されたテキストがここに表示されます（編集可能）"></textarea>
     <textarea id="referenceText" placeholder="比較対象のテキストをここに貼り付けてください"></textarea>
-    <button onclick="startComparison()">Start Comparison</button>
-    <table id="resultTable">
-      <thead>
-        <tr><th>Extracted Text</th><th>Reference Text</th></tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+    <button onclick="startComparison()">比較開始</button>
+    <div id="comparisonResult" class="result"></div>
   </div>
 
   <script>
@@ -56,6 +46,7 @@
             const area = document.getElementById('pasteArea');
             area.innerHTML = '';
             area.appendChild(pastedImage);
+            extractTextFromImage();
           };
           reader.readAsDataURL(blob);
         }
@@ -64,84 +55,65 @@
 
     function clearContent() {
       document.getElementById('pasteArea').innerHTML = 'ここに画像を Ctrl+V で貼り付けてください';
+      document.getElementById('extractedText').value = '';
       document.getElementById('referenceText').value = '';
-      document.getElementById('resultTable').getElementsByTagName('tbody')[0].innerHTML = '';
+      document.getElementById('comparisonResult').innerHTML = '';
       pastedImage = null;
     }
 
-    function extractIngredientsOnly(text) {
-      const start = text.indexOf('原材料名');
-      if (start === -1) return text;
-
-      const sliced = text.slice(start);
-      const endKeywords = ['内容量', '賞味期限', '保存方法', '製造者'];
-      let end = sliced.length;
-
-      for (const keyword of endKeywords) {
-        const idx = sliced.indexOf(keyword);
-        if (idx !== -1 && idx < end) {
-          end = idx;
-        }
-      }
-
-      const ingredientsSection = sliced.slice(0, end);
-      return ingredientsSection
-        .replace(/^原材料名[:：]?\s*/, '')
-        .replace(/[\r\n\u2028\u2029]+/g, '')
-        .replace(/\s+/g, '')
-        .trim();
+    async function extractTextFromImage() {
+      if (!pastedImage) return;
+      const { data: { text } } = await Tesseract.recognize(pastedImage.src, 'jpn', {
+        logger: m => console.log(m)
+      });
+      document.getElementById('extractedText').value = text;
     }
 
     function normalizeText(text) {
       return text
-        .replace(/[\uff08\uff09]/g, s => s === '\uff08' ? '(' : ')')
-        .replace(/[\u3001]/g, ',')
-        .replace(/[\u3002]/g, '.')
-        .replace(/[\uff1a]/g, ':')
-        .replace(/[\uff0f]/g, '/')
+        .replace(/[（）]/g, s => s === '（' ? '(' : ')')
+        .replace(/[、]/g, ',')
+        .replace(/[。]/g, '.')
+        .replace(/[：]/g, ':')
+        .replace(/[／]/g, '/')
         .replace(/\u3000/g, ' ')
         .replace(/[\r\n\u2028\u2029]+/g, '')
         .replace(/\s+/g, '')
         .trim();
     }
 
-    function highlightDifferences(extracted, reference) {
-      const maxLength = Math.max(extracted.length, reference.length);
-      let highlightedExtracted = '', highlightedReference = '';
-      for (let i = 0; i < maxLength; i++) {
-        const eChar = extracted[i] || '';
-        const rChar = reference[i] || '';
-        if (eChar !== rChar) {
-          highlightedExtracted += `<span class="diff-char">${eChar}</span>`;
-          highlightedReference += `<span class="diff-char">${rChar}</span>`;
-        } else {
-          highlightedExtracted += eChar;
-          highlightedReference += rChar;
-        }
+    function compareTexts(extracted, reference) {
+      const extractedIngredients = normalizeText(extracted).split(',');
+      const referenceIngredients = normalizeText(reference).split(',');
+
+      const missingInExtracted = referenceIngredients.filter(i => !extractedIngredients.includes(i));
+      const missingInReference = extractedIngredients.filter(i => !referenceIngredients.includes(i));
+
+      const orderDifferences = extractedIngredients.filter((i, idx) =>
+        referenceIngredients.includes(i) && i !== referenceIngredients[idx]
+      );
+
+      let result = '<h3>比較結果</h3>';
+      if (missingInExtracted.length > 0) {
+        result += `<p><strong>画像にあってテキストに無い原材料:</strong> ${missingInExtracted.join(', ')}</p>`;
       }
-      return { highlightedExtracted, highlightedReference };
+      if (missingInReference.length > 0) {
+        result += `<p><strong>テキストにあって画像に無い原材料:</strong> ${missingInReference.join(', ')}</p>`;
+      }
+      if (orderDifferences.length > 0) {
+        result += `<p><strong>表示順の違い:</strong> ${orderDifferences.join(', ')}</p>`;
+      }
+      if (missingInExtracted.length === 0 && missingInReference.length === 0 && orderDifferences.length === 0) {
+        result += '<p>差異はありません。</p>';
+      }
+
+      document.getElementById('comparisonResult').innerHTML = result;
     }
 
-    async function startComparison() {
+    function startComparison() {
+      const extractedText = document.getElementById('extractedText').value;
       const referenceText = document.getElementById('referenceText').value;
-      const resultTable = document.getElementById('resultTable').getElementsByTagName('tbody')[0];
-      if (!pastedImage) {
-        alert('画像が貼り付けられていません。');
-        return;
-      }
-
-      const { data: { text } } = await Tesseract.recognize(pastedImage.src, 'jpn', {
-        logger: m => console.log(m)
-      });
-
-      const cleanedExtracted = extractIngredientsOnly(text);
-      const cleanedReference = normalizeText(referenceText);
-      const { highlightedExtracted, highlightedReference } = highlightDifferences(cleanedExtracted, cleanedReference);
-
-      resultTable.innerHTML = '';
-      const row = resultTable.insertRow();
-      row.insertCell(0).innerHTML = highlightedExtracted;
-      row.insertCell(1).innerHTML = highlightedReference;
+      compareTexts(extractedText, referenceText);
     }
   </script>
 </body>
