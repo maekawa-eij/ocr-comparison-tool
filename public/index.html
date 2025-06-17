@@ -8,12 +8,20 @@
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
     .container { max-width: 800px; margin: auto; }
-    #pasteArea { border: 2px dashed #ccc; padding: 20px; height: 200px; text-align: center; line-height: 160px; color: #999; overflow: auto; }
+    #pasteArea {
+      border: 2px dashed #ccc;
+      padding: 20px;
+      height: 200px;
+      text-align: center;
+      line-height: 160px;
+      color: #999;
+      overflow: auto;
+    }
     #pasteArea img { max-width: 100%; max-height: 180px; }
     textarea { width: 100%; height: 150px; margin-top: 20px; }
     table { width: 100%; border-collapse: collapse; margin-top: 20px; }
     th, td { border: 1px solid #ccc; padding: 8px; vertical-align: top; }
-    .diff { background-color: #ffdddd; }
+    .diff-char { background-color: #ffdddd; }
   </style>
 </head>
 <body>
@@ -23,15 +31,9 @@
     <button onclick="clearContent()">Clear</button>
     <textarea id="referenceText" placeholder="比較対象のテキストをここに貼り付けてください"></textarea>
     <button onclick="startComparison()">Start Comparison</button>
-
-    <div id="cleanedArea"></div>
     <table id="resultTable">
       <thead>
-        <tr>
-          <th>Extracted Ingredient</th>
-          <th>Reference Ingredient</th>
-          <th>Difference Type</th>
-        </tr>
+        <tr><th>Extracted Text</th><th>Reference Text</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -64,107 +66,59 @@
       document.getElementById('pasteArea').innerHTML = 'ここに画像を Ctrl+V で貼り付けてください';
       document.getElementById('referenceText').value = '';
       document.getElementById('resultTable').getElementsByTagName('tbody')[0].innerHTML = '';
-      document.getElementById('cleanedArea').innerHTML = '';
       pastedImage = null;
     }
 
-    function normalizeAndExtractIngredients(text) {
-      let cleaned = text
-        .replace(/[\r\n]+/g, '')
+    function normalizeText(text) {
+      return text
+        .replace(/[\uff08\uff09]/g, s => s === '\uff08' ? '(' : ')')
+        .replace(/[\u3001]/g, ',')
+        .replace(/[\u3002]/g, '.')
+        .replace(/[\uff1a]/g, ':')
+        .replace(/[\uff0f]/g, '/')
+        .replace(/\u3000/g, ' ')
+        .replace(/[\r\n\u2028\u2029]+/g, '')
         .replace(/\s+/g, '')
-        .replace(/[（）]/g, s => s === '（' ? '(' : ')')
-        .replace(/[、]/g, ',')
-        .replace(/[。]/g, '.')
-        .replace(/[：]/g, ':')
-        .replace(/[／]/g, '/')
-        .replace(/\u3000/g, '');
-
-      const match = cleaned.match(/原材料名[:：]?(.+?)(含む\))?(内容量|保存方法|製造者|$)/);
-      let ingredients = '';
-
-      if (match && match[1]) {
-        ingredients = match[1];
-        if (match[2]) {
-          ingredients += match[2];
-        }
-      }
-
-      return ingredients
-        .split(',')
-        .map(item => item.trim())
-        .filter(item => item.length > 0);
+        .trim();
     }
 
-    function startComparison() {
+    function highlightDifferences(extracted, reference) {
+      const maxLength = Math.max(extracted.length, reference.length);
+      let highlightedExtracted = '', highlightedReference = '';
+      for (let i = 0; i < maxLength; i++) {
+        const eChar = extracted[i] || '';
+        const rChar = reference[i] || '';
+        if (eChar !== rChar) {
+          highlightedExtracted += `<span class="diff-char">${eChar}</span>`;
+          highlightedReference += `<span class="diff-char">${rChar}</span>`;
+        } else {
+          highlightedExtracted += eChar;
+          highlightedReference += rChar;
+        }
+      }
+      return { highlightedExtracted, highlightedReference };
+    }
+
+    async function startComparison() {
+      const referenceText = document.getElementById('referenceText').value;
+      const resultTable = document.getElementById('resultTable').getElementsByTagName('tbody')[0];
       if (!pastedImage) {
         alert('画像が貼り付けられていません。');
         return;
       }
 
-      Tesseract.recognize(pastedImage.src, 'jpn', {
+      const { data: { text } } = await Tesseract.recognize(pastedImage.src, 'jpn', {
         logger: m => console.log(m)
-      }).then(({ data: { text } }) => {
-        const raw = text.replace(/[\r\n]+/g, '');
-        const extractedList = normalizeAndExtractIngredients(raw);
-        const referenceList = normalizeAndExtractIngredients(document.getElementById('referenceText').value);
-
-        document.getElementById('cleanedArea').innerHTML =
-          `<strong>抽出された原材料リスト:</strong> ${extractedList.join(', ')}`;
-
-        const resultTable = document.getElementById('resultTable').getElementsByTagName('tbody')[0];
-        resultTable.innerHTML = '';
-
-        const usedExtracted = new Set();
-        const usedReference = new Set();
-
-        // 正しい位置で比較
-        const maxLength = Math.max(extractedList.length, referenceList.length);
-        for (let i = 0; i < maxLength; i++) {
-          const eItem = extractedList[i] || '';
-          const rItem = referenceList[i] || '';
-          let diffType = '';
-
-          if (eItem && !rItem) {
-            diffType = '余分';
-          } else if (!eItem && rItem) {
-            diffType = '抜け';
-          } else if (eItem !== rItem) {
-            if (referenceList.includes(eItem) && !usedReference.has(eItem)) {
-              diffType = '順序の違い';
-              usedReference.add(eItem);
-            } else {
-              diffType = '文字の違い';
-            }
-          }
-
-          if (eItem) usedExtracted.add(eItem);
-          if (rItem) usedReference.add(rItem);
-
-          const row = resultTable.insertRow();
-          row.insertCell(0).innerHTML = diffType ? `<span class="diff">${eItem}</span>` : eItem;
-          row.insertCell(1).innerHTML = diffType ? `<span class="diff">${rItem}</span>` : rItem;
-          row.insertCell(2).textContent = diffType;
-        }
-
-        // 残りの漏れをチェック
-        referenceList.forEach(rItem => {
-          if (!usedReference.has(rItem)) {
-            const row = resultTable.insertRow();
-            row.insertCell(0).innerHTML = '';
-            row.insertCell(1).innerHTML = `<span class="diff">${rItem}</span>`;
-            row.insertCell(2).textContent = '抜け';
-          }
-        });
-
-        extractedList.forEach(eItem => {
-          if (!usedExtracted.has(eItem) && !referenceList.includes(eItem)) {
-            const row = resultTable.insertRow();
-            row.insertCell(0).innerHTML = `<span class="diff">${eItem}</span>`;
-            row.insertCell(1).innerHTML = '';
-            row.insertCell(2).textContent = '余分';
-          }
-        });
       });
+
+      const cleanedExtracted = normalizeText(text);
+      const cleanedReference = normalizeText(referenceText);
+      const { highlightedExtracted, highlightedReference } = highlightDifferences(cleanedExtracted, cleanedReference);
+
+      resultTable.innerHTML = '';
+      const row = resultTable.insertRow();
+      row.insertCell(0).innerHTML = highlightedExtracted;
+      row.insertCell(1).innerHTML = highlightedReference;
     }
   </script>
 </body>
